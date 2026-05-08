@@ -13,6 +13,40 @@ import { sendWhatsappMessage } from "./lib/twilio"
 const app = express()
 const PORT = process.env.PORT || 3000
 
+/**
+ * Cleans agent response text before sending to WhatsApp:
+ * 1. Strips leaked <function=...>...</function> tool call blocks (Groq llama model bug)
+ * 2. Strips any leftover raw JSON blobs
+ * 3. Deduplicates repeated content caused by Mastra memory context bleed
+ */
+function cleanAgentResponse(text: string): string {
+  if (!text) return text
+
+  // Step 1: Strip <function=functionName>{...}</function> blocks the model leaks as plain text
+  let cleaned = text.replace(/<function=[^>]+>[\s\S]*?<\/function>/g, "").trim()
+
+  // Step 2: Strip any orphaned JSON blobs at the end (e.g. {"memory": {...}})
+  cleaned = cleaned.replace(/\s*\{[\s\S]*\}\s*$/, "").trim()
+
+  // Step 3: Deduplicate — if the response contains an exact repeated prefix, keep only the last occurrence
+  if (cleaned.length >= 20) {
+    const halfLen = Math.floor(cleaned.length / 2)
+    for (let len = halfLen; len >= 20; len--) {
+      const candidate = cleaned.slice(0, len)
+      const rest = cleaned.slice(len)
+      if (rest.trimStart().startsWith(candidate) || rest.includes(candidate)) {
+        const lastIdx = cleaned.lastIndexOf(candidate)
+        if (lastIdx > 0) {
+          cleaned = cleaned.slice(lastIdx).trim()
+          break
+        }
+      }
+    }
+  }
+
+  return cleaned
+}
+
 // Middleware
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
@@ -108,10 +142,12 @@ app.post("/recieve-message", async (_req: Request, _res: Response) => {
       }
     });
 
-    console.log(`Agent response: ${response.text}`);
+    const cleanedResponse = cleanAgentResponse(response.text)
+    console.log(`Agent response (raw): ${response.text}`)
+    console.log(`Agent response (clean): ${cleanedResponse}`)
 
     // Send response back via Twilio
-    await sendWhatsappMessage(WaId, response.text);
+    await sendWhatsappMessage(WaId, cleanedResponse);
 
     // Acknowledge the webhook so Twilio doesn't retry
     return _res.status(200).send("OK")
