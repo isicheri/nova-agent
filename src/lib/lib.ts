@@ -31,7 +31,7 @@ async  saveConversationState({phoneNumber,threadId,intent,step,service,date,time
     service,
     date,
     time
-   }, {ex: 60 * 60 * 24})
+   }, {ex: 60 * 60 * 24 * 7})
 
   }
 
