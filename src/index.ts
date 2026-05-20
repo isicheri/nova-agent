@@ -8,6 +8,7 @@ import { customerTable } from "./db/schema"
 import { eq } from "drizzle-orm"
 import { randomUUID } from "crypto"
 import { orchestratorAgent } from "./mastra/agents/orchestrator-agent"
+import { textFormatterAgent } from "./mastra/agents/text-formatter-agent"
 import { sendWhatsappMessage } from "./lib/twilio"
 
 const app = express()
@@ -142,12 +143,25 @@ app.post("/recieve-message", async (_req: Request, _res: Response) => {
       }
     });
 
-    const cleanedResponse = cleanAgentResponse(response.text)
     console.log(`Agent response (raw): ${response.text}`)
-    console.log(`Agent response (clean): ${cleanedResponse}`)
+
+    // Run through the text formatter agent to strip artifacts and clean the message
+    let finalResponse: string
+    try {
+      const formatted = await textFormatterAgent.generate(
+        `Clean this raw agent response before sending it to a WhatsApp customer:\n\n${response.text}`
+      )
+      finalResponse = formatted.text.trim()
+      console.log(`Agent response (formatted): ${finalResponse}`)
+    } catch (formatterError) {
+      // Fallback to regex cleaner if formatter agent fails
+      console.warn("Formatter agent failed, using regex fallback:", formatterError)
+      finalResponse = cleanAgentResponse(response.text)
+      console.log(`Agent response (regex fallback): ${finalResponse}`)
+    }
 
     // Send response back via Twilio
-    await sendWhatsappMessage(WaId, cleanedResponse);
+    await sendWhatsappMessage(WaId, finalResponse);
 
     // Acknowledge the webhook so Twilio doesn't retry
     return _res.status(200).send("OK")

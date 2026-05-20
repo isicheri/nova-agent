@@ -5,9 +5,10 @@ import { LibSQLStore } from "@mastra/libsql"
 import { orchestratorAgent } from "./agents/orchestrator-agent"
 import { bookingAgent } from "./agents/booking_agent"
 import { chatAgent } from "./agents/chat-agent"
+import { textFormatterAgent } from "./agents/text-formatter-agent"
 
 export const mastra = new Mastra({
-  agents: { orchestratorAgent, bookingAgent, chatAgent },
+  agents: { orchestratorAgent, bookingAgent, chatAgent, textFormatterAgent },
   storage: new LibSQLStore({
     id: "mastra-storage",
     url: "file:./mastra.db",
