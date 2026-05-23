@@ -55,6 +55,17 @@ app.use(express.urlencoded({ extended: true }))
 const server = new MastraServer({ app, mastra })
 await server.init()
 
+//is database active
+app.get("/test-db", async (_req: Request, _res: Response) => {
+  try {
+    const customers = await db.select().from(customerTable)
+    return _res.status(200).json({ message: "Database is active", customers: customers })
+  } catch (error) {
+    console.error("Database error:", error)
+    return _res.status(500).json({ message: "Database is not active" })
+  }
+})
+
 // Webhooks
 app.post("/recieve-message", async (_req: Request, _res: Response) => {
   try {

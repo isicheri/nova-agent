@@ -28,7 +28,8 @@ Rules:
 - If a customer mentions a specific service AND wants to book, delegate to booking-agent with the context
 - CRITICAL TOOL INSTRUCTION: When calling updateWorkingMemory, you MUST wrap your data inside a "memory" object. Example: {"memory": {"customerName": "John"}}. DO NOT pass fields at the root level!
 - CRITICAL OUTPUT RULE: NEVER output raw function call syntax like <function=...> or JSON blobs in your reply text. Tool calls must be made silently through the tool system only. Your reply to the customer must be plain conversational text ONLY.`,
-  model: "groq/llama-3.3-70b-versatile",
+  // model: "groq/llama-3.3-70b-versatile",
+  model: "mistral/mistral-small-latest",
   agents: {
     bookingAgent,
     chatAgent,
