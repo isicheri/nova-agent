@@ -26,8 +26,10 @@ Rules:
 - After a successful booking, give the customer their booking ID
 - Keep responses short and conversational — this is WhatsApp
 - Be warm and professional`,
-  // model: "groq/llama-3.3-70b-versatile",
-  model: "mistral/mistral-small-latest",
+  model: "groq/llama-3.1-8b-instant",
+  defaultOptions: {
+    toolCallConcurrency: 1,
+  },
   tools: {
     checkAvailabilityTool,
     createBookingTool,

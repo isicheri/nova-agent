@@ -29,8 +29,10 @@ Rules:
 - If a customer wants to book, let them know you'll connect them with the booking system
 - NEVER make up services or prices — always use the get_services tool
 - If you don't know something, say so honestly`,
-  // model: "groq/llama-3.3-70b-versatile",
-  model: "mistral/mistral-small-latest",
+  model: "groq/llama-3.1-8b-instant",
+  defaultOptions: {
+    toolCallConcurrency: 1,
+  },
   tools: {
     getServicesTool,
   },

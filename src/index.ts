@@ -147,12 +147,41 @@ app.post("/recieve-message", async (_req: Request, _res: Response) => {
 
     // Call AI agent with user message and thread state
     console.log(`Calling orchestrator agent for thread: ${threadId}`);
-    const response = await orchestratorAgent.generate(Body, {
-      memory: {
-        thread: threadId,
-        resource: WaId
+    let response;
+    try {
+      response = await orchestratorAgent.generate(Body, {
+        toolCallConcurrency: 1,
+        memory: {
+          thread: threadId,
+          resource: WaId
+        }
+      });
+    } catch (generateError) {
+      console.error("Failed to generate response for thread:", threadId, generateError);
+
+      // Self-healing: Clean up the poisoned conversation history from the SQLite database
+      try {
+        const memory = await orchestratorAgent.getMemory();
+        if (memory) {
+          const recallResult = await memory.recall({ threadId });
+          const messages = recallResult?.messages;
+          if (messages && Array.isArray(messages) && messages.length > 0) {
+            // Revert the last 2 messages (the user prompt and any partial/failed assistant response)
+            const lastMessages = messages.slice(-2);
+            const messagesToDelete = lastMessages.map(msg => msg.id).filter(Boolean) as string[];
+
+            if (messagesToDelete.length > 0) {
+              await memory.deleteMessages(messagesToDelete);
+              console.log(`Cleaned up ${messagesToDelete.length} failed/poisoned messages from thread memory.`);
+            }
+          }
+        }
+      } catch (cleanupError) {
+        console.error("Failed to clean up memory after error:", cleanupError);
       }
-    });
+
+      throw generateError; // Re-throw to propagate error to Express's catch block
+    }
 
     console.log(`Agent response (raw): ${response.text}`)
 

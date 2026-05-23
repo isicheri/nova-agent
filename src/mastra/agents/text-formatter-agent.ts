@@ -18,6 +18,5 @@ Your task:
 4. Output ONLY the clean message text — no explanations, no preamble, no "Here is the cleaned version:" prefix
 
 IMPORTANT: Output the final message text ONLY. Nothing else.`,
-  // model: "groq/llama-3.1-8b-instant",
-  model: "mistral/mistral-small-latest",
+  model: "groq/llama-3.1-8b-instant",
 })
