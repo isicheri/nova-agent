@@ -63,7 +63,7 @@ Rules:
     delegation: {
       onDelegationStart: async (context) => {
         console.log(`→ Delegating to: ${context.primitiveId}`)
-        return { proceed: true }
+        return { proceed: true, modifiedMaxSteps: 5 }
       },
 
       onDelegationComplete: async (context) => {
