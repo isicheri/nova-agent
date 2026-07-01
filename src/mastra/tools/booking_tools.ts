@@ -1,90 +1,22 @@
 import { createTool } from "@mastra/core/tools"
 import { z } from "zod"
 import { db } from "../../db"
-import { bookingTable, serviceTable, customerTable } from "../../db/schema"
-import { eq, and } from "drizzle-orm"
+import { bookingTable, serviceTable, customerTable, therapistTable } from "../../db/schema"
+import { eq } from "drizzle-orm"
 import { randomUUID } from "crypto"
 
-// Tool 1: Check availability for a service on a specific date/time
-export const checkAvailabilityTool = createTool({
-  id: "check-availability",
-  description:
-    "Checks if a specific time slot is available for a service on a given date. " +
-    "Use this before creating a booking to ensure the slot is free. " +
-    "Returns whether the slot is available and suggests alternatives if not.",
-  inputSchema: z.object({
-    date: z.string().describe("The date to check in YYYY-MM-DD format"),
-    timeSlot: z.string().describe("The time slot to check, e.g. '10:00 AM', '2:30 PM'"),
-    serviceId: z.string().describe("The UUID of the service to book"),
-  }),
-  outputSchema: z.object({
-    available: z.boolean(),
-    message: z.string(),
-    suggestedSlots: z.array(z.string()).optional(),
-  }),
-  execute: async ( inputData  ) => {
-    const { date, timeSlot, serviceId } = inputData
-
-    // Check if any booking exists for this date and time slot
-    const existingBookings = await db
-      .select()
-      .from(bookingTable)
-      .where(
-        and(
-          eq(bookingTable.timeSlot, timeSlot),
-          eq(bookingTable.serviceId, serviceId),
-          eq(bookingTable.status, "confirmed")
-        )
-      )
-
-    // Filter bookings for the specific date
-    const conflicting = existingBookings.filter((b) => {
-      if (!b.date) return false
-      const bookingDate = new Date(b.date).toISOString().split("T")[0]
-      return bookingDate === date
-    })
-
-    if (conflicting.length === 0) {
-      return {
-        available: true,
-        message: `The ${timeSlot} slot on ${date} is available!`,
-      }
-    }
-
-    // Suggest alternative time slots
-    const allSlots = [
-      "9:00 AM", "10:00 AM", "11:00 AM",
-      "12:00 PM", "1:00 PM", "2:00 PM",
-      "3:00 PM", "4:00 PM", "5:00 PM",
-    ]
-
-    const bookedSlots = existingBookings
-      .filter((b) => {
-        if (!b.date) return false
-        return new Date(b.date).toISOString().split("T")[0] === date
-      })
-      .map((b) => b.timeSlot)
-
-    const suggestedSlots = allSlots.filter((s) => !bookedSlots.includes(s))
-
-    return {
-      available: false,
-      message: `Sorry, the ${timeSlot} slot on ${date} is already booked.`,
-      suggestedSlots: suggestedSlots.slice(0, 3),
-    }
-  },
-})
-
-// Tool 2: Create a new booking
+// Tool 1: Create a new booking
 export const createBookingTool = createTool({
   id: "create-booking",
   description:
     "Creates a new appointment booking for a customer. " +
-    "Use this after confirming the service, date, and time with the customer. " +
+    "Use this after confirming the service, therapist, date, and time with the customer. " +
     "Always check availability first before creating a booking.",
   inputSchema: z.object({
     customerPhone: z.string().describe("The customer's phone number (WaId)"),
-    serviceId: z.string().describe("The UUID of the service to book"),
+    customerName: z.string().describe("The customer's full name"),
+    serviceName: z.string().describe("The name of the service to book (e.g. 'Swedish Massage')"),
+    therapistName: z.string().optional().describe("The name of the therapist (optional)"),
     date: z.string().describe("The appointment date in YYYY-MM-DD format"),
     timeSlot: z.string().describe("The time slot, e.g. '10:00 AM', '2:30 PM'"),
   }),
@@ -94,64 +26,53 @@ export const createBookingTool = createTool({
     bookingId: z.string().optional(),
   }),
   execute: async (inputData) => {
-    const { customerPhone, serviceId, date, timeSlot } = inputData
+    const { customerPhone, customerName, serviceName, therapistName, date, timeSlot } = inputData
 
-    // Find the customer by phone number
-    const customers = await db
-      .select()
-      .from(customerTable)
-      .where(eq(customerTable.phone, customerPhone))
-
+    let customer = null
+    const customers = await db.select().from(customerTable).where(eq(customerTable.phone, customerPhone))
     if (customers.length === 0) {
-      return {
-        success: false,
-        message: "Customer not found. Please register first.",
-      }
+      const newId = randomUUID()
+      await db.insert(customerTable).values({ id: newId, name: customerName, phone: customerPhone })
+      customer = { id: newId, name: customerName, phone: customerPhone }
+    } else {
+      customer = customers[0]
     }
 
-    const customer = customers[0]
-    if (!customer) {
-      return {
-        success: false,
-        message: "Customer not found. Please register first.",
-      }
+    if (!customer) return { success: false, message: "Could not create or find customer." }
+
+    const allServices = await db.select().from(serviceTable)
+    const service = allServices.find(s => s.name.toLowerCase().includes(serviceName.toLowerCase()))
+    if (!service) return { success: false, message: `Service '${serviceName}' not found.` }
+
+    let therapist = null
+    if (therapistName) {
+      const allTherapists = await db.select().from(therapistTable)
+      therapist = allTherapists.find(t => t.name.toLowerCase().includes(therapistName.toLowerCase()))
     }
-
-    // Verify the service exists
-    const services = await db
-      .select()
-      .from(serviceTable)
-      .where(eq(serviceTable.id, serviceId))
-
-    if (services.length === 0) {
-      return {
-        success: false,
-        message: "Service not found. Please choose a valid service.",
-      }
-    }
-
-    const service = services[0]
 
     const bookingId = randomUUID()
 
     await db.insert(bookingTable).values({
       id: bookingId,
       customerId: customer.id,
-      serviceId: serviceId,
+      serviceId: service.id,
+      therapistId: therapist?.id ?? null,
       date: new Date(date),
       timeSlot: timeSlot,
       status: "confirmed",
     })
 
+    console.log(`[EMAIL MOCK] New booking created! Admin alerted. Booking ID: ${bookingId}`)
+
     return {
       success: true,
-      message: `Booking confirmed! ${service?.name} on ${date} at ${timeSlot}. Your booking ID is ${bookingId.slice(0, 8)}.`,
+      message: `Booking confirmed! ${service.name}${therapist ? ` with ${therapist.name}` : ''} on ${date} at ${timeSlot}. Your booking ID is ${bookingId.slice(0, 8)}.`,
       bookingId,
     }
   },
 })
 
-// Tool 3: Manage existing bookings (get, reschedule, cancel)
+// Tool 2: Manage existing bookings (get, reschedule, cancel)
 export const manageBookingTool = createTool({
   id: "manage-booking",
   description:
@@ -178,23 +99,12 @@ export const manageBookingTool = createTool({
   execute: async (inputData) => {
     const { action, customerPhone, bookingId, newDate, newTimeSlot } = inputData
 
-    // Find the customer
-    const customers = await db
-      .select()
-      .from(customerTable)
-      .where(eq(customerTable.phone, customerPhone))
-
-    if (customers.length === 0) {
-      return { success: false, message: "Customer not found." }
-    }
-
+    const customers = await db.select().from(customerTable).where(eq(customerTable.phone, customerPhone))
+    if (customers.length === 0) return { success: false, message: "Customer not found." }
     const customer = customers[0]
-    if (!customer) {
-      return { success: false, message: "Customer not found." }
-    }
+    if (!customer) return { success: false, message: "Customer not found." }
 
     if (action === "get") {
-      // Get all bookings for this customer
       const bookings = await db
         .select({
           id: bookingTable.id,
@@ -207,9 +117,7 @@ export const manageBookingTool = createTool({
         .innerJoin(serviceTable, eq(bookingTable.serviceId, serviceTable.id))
         .where(eq(bookingTable.customerId, customer.id))
 
-      if (bookings.length === 0) {
-        return { success: true, message: "You have no bookings yet." }
-      }
+      if (bookings.length === 0) return { success: true, message: "You have no bookings yet." }
 
       return {
         success: true,
@@ -225,51 +133,68 @@ export const manageBookingTool = createTool({
     }
 
     if (action === "reschedule") {
-      if (!bookingId || !newDate || !newTimeSlot) {
-        return {
-          success: false,
-          message: "Please provide the booking ID, new date, and new time slot to reschedule.",
-        }
-      }
-
-      await db
-        .update(bookingTable)
-        .set({
-          date: new Date(newDate),
-          timeSlot: newTimeSlot,
-          status: "rescheduled",
-          updatedAt: new Date(),
-        })
-        .where(eq(bookingTable.id, bookingId))
-
-      return {
-        success: true,
-        message: `Booking rescheduled to ${newDate} at ${newTimeSlot}.`,
-      }
+      if (!bookingId || !newDate || !newTimeSlot) return { success: false, message: "Please provide the booking ID, new date, and new time slot." }
+      await db.update(bookingTable).set({ date: new Date(newDate), timeSlot: newTimeSlot, status: "rescheduled", updatedAt: new Date() }).where(eq(bookingTable.id, bookingId))
+      return { success: true, message: `Booking rescheduled to ${newDate} at ${newTimeSlot}.` }
     }
 
     if (action === "cancel") {
-      if (!bookingId) {
-        return {
-          success: false,
-          message: "Please provide the booking ID to cancel.",
-        }
-      }
-
-      await db
-        .update(bookingTable)
-        .set({
-          status: "cancelled",
-          updatedAt: new Date(),
-        })
-        .where(eq(bookingTable.id, bookingId))
-
-      return {
-        success: true,
-        message: "Booking has been cancelled.",
-      }
+      if (!bookingId) return { success: false, message: "Please provide the booking ID." }
+      await db.update(bookingTable).set({ status: "cancelled", updatedAt: new Date() }).where(eq(bookingTable.id, bookingId))
+      return { success: true, message: "Booking has been cancelled." }
     }
 
     return { success: false, message: "Invalid action." }
+  },
+})
+
+// Tool 3: Waitlist Booking Tool
+export const waitlistBookingTool = createTool({
+  id: "waitlist-booking",
+  description:
+    "Adds a customer to the waitlist for a specific service on a specific date when the time slot is full.",
+  inputSchema: z.object({
+    customerPhone: z.string().describe("The customer's phone number (WaId)"),
+    customerName: z.string().describe("The customer's full name"),
+    serviceName: z.string().describe("The name of the service to waitlist for"),
+    date: z.string().describe("The date in YYYY-MM-DD format"),
+    timeSlot: z.string().describe("The time slot they want, e.g. '10:00 AM'"),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    message: z.string(),
+  }),
+  execute: async (inputData) => {
+    const { customerPhone, customerName, serviceName, date, timeSlot } = inputData
+
+    let customer = null
+    const customers = await db.select().from(customerTable).where(eq(customerTable.phone, customerPhone))
+    if (customers.length === 0) {
+      const newId = randomUUID()
+      await db.insert(customerTable).values({ id: newId, name: customerName, phone: customerPhone })
+      customer = { id: newId, name: customerName, phone: customerPhone }
+    } else {
+      customer = customers[0]
+    }
+
+    if (!customer) return { success: false, message: "Could not create or find customer." }
+
+    const allServices = await db.select().from(serviceTable)
+    const service = allServices.find(s => s.name.toLowerCase().includes(serviceName.toLowerCase()))
+    if (!service) return { success: false, message: `Service '${serviceName}' not found.` }
+
+    await db.insert(bookingTable).values({
+      id: randomUUID(),
+      customerId: customer.id,
+      serviceId: service.id,
+      date: new Date(date),
+      timeSlot: timeSlot,
+      status: "waitlisted",
+    })
+
+    return {
+      success: true,
+      message: `You have been added to the waitlist for ${timeSlot} on ${date}. We will contact you if a spot opens up!`,
+    }
   },
 })

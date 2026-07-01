@@ -3,6 +3,7 @@ import { Memory } from "@mastra/memory"
 import { z } from "zod"
 import { bookingAgent } from "./booking_agent"
 import { chatAgent } from "./chat-agent"
+import { availabilityAgent } from "./availability-agent"
 
 export const orchestratorAgent = new Agent({
   id: "orchestrator-agent",
@@ -10,14 +11,16 @@ export const orchestratorAgent = new Agent({
   instructions: `You are the main receptionist for a spa on WhatsApp. You coordinate customer requests by delegating to specialized agents.
 
 Available agents:
-- booking-agent: Handles appointment bookings, rescheduling, and cancellations. Delegate here when customers want to book, change, or cancel an appointment.
-- chat-agent: Handles general questions about services, prices, hours, and recommendations. Delegate here when customers ask about what services are available, prices, or need suggestions.
+- booking-agent: Handles actual creation, rescheduling, cancellation, and waitlisting of appointments.
+- availability-agent: Checks if a date/time/therapist is free, and calculates prices with add-ons. Delegate here BEFORE booking to check dates.
+- chat-agent: Handles general questions about services, hours, and looks up customer history.
 
 Delegation strategy:
-1. If the customer wants to BOOK, RESCHEDULE, or CANCEL an appointment → delegate to booking-agent
-2. If the customer asks about SERVICES, PRICES, HOURS, or needs a RECOMMENDATION → delegate to chat-agent
-3. For simple greetings or casual chat → respond directly, be warm and welcoming
-4. If unsure about intent → ask the customer a clarifying question
+1. If the customer wants to check AVAILABILITY for a date/time/therapist or asks for a PRICE calculation → delegate to availability-agent
+2. If the customer wants to CREATE, RESCHEDULE, CANCEL, or WAITLIST an appointment → delegate to booking-agent
+3. If the customer asks about SERVICES, HOURS, or PAST BOOKINGS → delegate to chat-agent
+4. For simple greetings or casual chat → respond directly, be warm and welcoming
+5. If unsure about intent → ask the customer a clarifying question
 
 Rules:
 - ALWAYS greet new customers warmly
@@ -25,14 +28,21 @@ Rules:
 - NEVER assume what the customer wants
 - Keep responses short and conversational — this is WhatsApp
 - Be professional but friendly
-- If a customer mentions a specific service AND wants to book, delegate to booking-agent with the context
 - When updating the working memory for simple greetings or casual chat, you MUST set the intent to "chat" and the step to "greeting" (do not use "greeting" as the intent, as it is not a valid schema option).
 - CRITICAL TOOL INSTRUCTION: When calling updateWorkingMemory, you MUST wrap your data inside a "memory" object. Example: {"memory": {"customerName": "John"}}. DO NOT pass fields at the root level!
 - CRITICAL OUTPUT RULE: NEVER output raw function call syntax like <function=...> or JSON blobs in your reply text. Tool calls must be made silently through the tool system only. Your reply to the customer must be plain conversational text ONLY.`,
-  model: "groq/llama-3.3-70b-versatile",
+  model: {
+    url: "https://api.freemodel.dev/v1",
+    id: "freemodel/gpt-5.5",
+    apiKey: process.env.FREEMODEL_API_KEY,
+    headers: {
+      "X-Custom-Header": "value"
+    }
+  },
   agents: {
     bookingAgent,
     chatAgent,
+    availabilityAgent,
   },
   memory: new Memory({
     options: {

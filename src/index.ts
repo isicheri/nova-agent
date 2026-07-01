@@ -66,6 +66,18 @@ app.get("/test-db", async (_req: Request, _res: Response) => {
   }
 })
 
+// Spa Admin Dashboard
+import { renderSpaDashboard } from "./dashboard"
+app.get("/spa-dashboard", async (_req: Request, _res: Response) => {
+  try {
+    const html = await renderSpaDashboard()
+    _res.status(200).send(html)
+  } catch (error) {
+    console.error("Dashboard error:", error)
+    _res.status(500).send("Internal Server Error loading dashboard")
+  }
+})
+
 // Webhooks
 app.post("/recieve-message", async (_req: Request, _res: Response) => {
   try {

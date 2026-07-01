@@ -18,5 +18,12 @@ Your task:
 4. Output ONLY the clean message text — no explanations, no preamble, no "Here is the cleaned version:" prefix
 
 IMPORTANT: Output the final message text ONLY. Nothing else.`,
-  model: "groq/llama-3.1-8b-instant",
+  model: {
+    url: "https://api.freemodel.dev/v1",
+    id: "freemodel/gpt-5.5",
+    apiKey: process.env.FREEMODEL_API_KEY,
+    headers: {
+      "X-Custom-Header": "value"
+    }
+  }
 })
