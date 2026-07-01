@@ -183,7 +183,7 @@ export async function renderSpaDashboard(): Promise<string> {
 <body>
   <div class="container">
     <header>
-      <h1>Nova Spa Dashboard</h1>
+      <h1>Spa Dashboard</h1>
       <p class="subtitle">Real-time overview of all customer bookings and waitlists.</p>
     </header>
 
